@@ -1,0 +1,57 @@
+#####code for twosamplemr
+
+library(TwoSampleMR)
+library(data.table)
+exposure <- read_exposure_data(filename = "xxx.csv",sep = ",",snp_col = "SNP",beta_col = "Beta",se_col = "Se",effect_allele_col = "Effect_allele",other_allele_col = "Other_allele",eaf_col = "Effect_allele_frequency",phenotype_col = "Protein",clump=TRUE)
+outcome <- read_outcome_data(snps = exposure$SNP,filename = "finngen_R10_C3_PANCREAS_EXALLC.txt",sep = "\t",
+                             snp_col = "rsids",beta_col = "beta",se_col = "sebeta",effect_allele_col = "alt",other_allele_col = "ref",
+                             eaf_col = "af_alt", pval_col = "pval")
+
+outcome <- extract_outcome_data(snps = exposure$SNP,outcomes = c("ebi-a-GCST90038650","ukb-d-20501","ebi-a-GSCT90038651"))
+dat<-harmonise_data(exposure_dat = exposure,outcome_dat = outcome)
+write.csv(dat,"dat.csv")
+res <- mr(dat)
+write.csv(res,"res.csv")
+or <- generate_odds_ratios(mr_res = res)
+write.csv(or,"or.csv")
+h <- mr_heterogeneity(dat)
+write.csv(h,"h.csv") 
+p <- mr_pleiotropy_test(dat)
+write.csv(p,"p.csv")
+
+
+
+
+
+#####code for colocalization
+library(remotes)
+library(dplyr)
+library(devtools)
+library("coloc")
+
+# 循环读取数据集data0的每一行
+for (i in 1:nrow(data0)) {
+  # 读取exposure列中的名称
+  exposure_name <- as.character(data0[i, "exposure"])
+  # 读取相应的gwas文件
+  gwas <- read.csv(paste0(input_dir1, exposure_name, ".csv"))
+  gwas1 <- subset(gwas,gwas$rs_id !=".")
+  gwas <- gwas1
+  # 读取相应的eqtl文件
+  eqtl <- read.csv(paste0(input_dir2, exposure_name, ".csv"))
+  eqtl1 <- subset(eqtl,eqtl$rs_id !=".")
+  eqtl <- eqtl1
+
+  # 将读取的csv文件与eqtl数据集进行合并
+  input <- merge(eqtl, gwas, by = "rs_id", all = FALSE, suffixes = c("_eqtl", "_gwas"))
+  # 去除重复 snp
+  input <- input[!duplicated(input$rs_id), ]
+  # 运行coloc函数进行colocalization分析
+  result <- coloc.abf(dataset1 = list(snp = input$rs_id, pvalues = input$Pvalue, type = "cc", s = 0.33, N = 1030836),
+                      dataset2 = list(snp = input$rs_id, pvalues = input$pval_nominal, type = "quant", N = 20000),
+                      MAF = input$maf)
+  # 选择colocalization结果
+  need_result <- result$results %>% filter(SNP.PP.H4 > 0.01)
+  # 将colocalization结果保存到csv文件中
+  write.csv(need_result, file = paste0(output_dir, exposure_name, ".csv"), row.names = FALSE)
+}
